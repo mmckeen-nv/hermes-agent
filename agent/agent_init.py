@@ -261,14 +261,17 @@ def init_agent(
     agent.max_turns_auto_extend = str(
         _turn_cfg.get("max_turns_auto_extend", False)
     ).lower() in {"true", "1", "yes", "on"}
+    agent.max_turns_extension_policy = str(
+        _turn_cfg.get("max_turns_extension_policy", "cognition")
+    ).strip().lower().replace("-", "_")
     try:
-        agent.max_turns_extension = max(1, int(_turn_cfg.get("max_turns_extension", max(10, max_iterations // 2))))
+        agent.max_turns_extension = max(1, int(_turn_cfg.get("max_turns_extension", 30)))
     except Exception:
-        agent.max_turns_extension = max(10, max_iterations // 2)
+        agent.max_turns_extension = 30
     try:
-        agent.max_turns_hard_cap = max(max_iterations, int(_turn_cfg.get("max_turns_hard_cap", max_iterations)))
+        agent.max_turns_hard_cap = max(max_iterations, int(_turn_cfg.get("max_turns_hard_cap", 300)))
     except Exception:
-        agent.max_turns_hard_cap = max_iterations
+        agent.max_turns_hard_cap = max(max_iterations, 300)
     # Shared iteration budget — parent creates, children inherit.
     # Consumed by every LLM turn across parent + all subagents.
     agent.iteration_budget = iteration_budget or IterationBudget(max_iterations)

@@ -30,6 +30,7 @@ import re
 import inspect
 from typing import Any, Dict, List, Optional
 
+from agent.iteration_extension import normalize_extension_decision
 from agent.memory_provider import MemoryProvider
 from tools.registry import tool_error
 
@@ -354,6 +355,36 @@ class MemoryManager:
                     provider.name, e,
                 )
         return "\n\n".join(parts)
+
+    def decide_iteration_extension(self, run_state: Dict[str, Any]) -> Dict[str, Any]:
+        """Ask the active external memory provider whether to extend a run.
+
+        This is used when the agent exhausts its tool-iteration budget.  The
+        first external provider with a concrete opinion wins.  Provider errors
+        fail closed so a broken cognition layer cannot create an infinite loop.
+        """
+        for provider in self._providers:
+            if provider.name == "builtin":
+                continue
+            hook = getattr(provider, "decide_iteration_extension", None)
+            if not callable(hook):
+                continue
+            try:
+                decision = normalize_extension_decision(hook(run_state))
+            except Exception as e:
+                logger.warning(
+                    "Memory provider '%s' iteration-extension decision failed: %s",
+                    provider.name, e,
+                )
+                return {
+                    "decision": "deny",
+                    "reason_codes": ["provider_error", provider.name],
+                    "source": provider.name,
+                }
+            if decision:
+                decision.setdefault("source", provider.name)
+                return decision
+        return {}
 
     def queue_prefetch_all(self, query: str, *, session_id: str = "") -> None:
         """Queue background prefetch on all providers for the next turn."""
