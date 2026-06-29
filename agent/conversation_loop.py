@@ -31,6 +31,11 @@ from agent.codex_responses_adapter import _summarize_user_message_for_log
 from agent.display import KawaiiSpinner
 from agent.error_classifier import FailoverReason, classify_api_error
 from agent.iteration_budget import IterationBudget
+from agent.iteration_extension import (
+    build_iteration_extension_state,
+    heuristic_iteration_extension_decision,
+    normalize_extension_decision,
+)
 from agent.memory_manager import build_memory_context_block
 from agent.message_sanitization import (
     _repair_tool_call_arguments,
@@ -584,6 +589,66 @@ def run_conversation(
 
     active_system_prompt = agent._cached_system_prompt
 
+    def _maybe_extend_iteration_budget() -> bool:
+        budget = getattr(agent, "iteration_budget", None)
+        if not budget or budget.remaining > 0:
+            return False
+        if not getattr(agent, "max_turns_auto_extend", False):
+            return False
+        hard_cap = int(getattr(agent, "max_turns_hard_cap", 0) or 0)
+        if hard_cap and budget.max_total >= hard_cap:
+            return False
+
+        policy = str(getattr(agent, "max_turns_extension_policy", "cognition") or "cognition").lower().replace("-", "_")
+        decision: Dict[str, Any]
+        if policy in {"progress", "always", "legacy"}:
+            decision = {"decision": "grant", "reason_codes": ["legacy_progress_policy"], "source": "hermes"}
+        else:
+            state = build_iteration_extension_state(
+                messages=messages,
+                user_message=original_user_message if isinstance(original_user_message, str) else "",
+                prefetch_context=_ext_prefetch_cache,
+                session_id=getattr(agent, "session_id", "") or "",
+                api_call_count=api_call_count,
+                budget_used=budget.used,
+                budget_max=budget.max_total,
+                hard_cap=hard_cap,
+            )
+            provider_decision: Dict[str, Any] = {}
+            if getattr(agent, "_memory_manager", None):
+                try:
+                    provider_decision = agent._memory_manager.decide_iteration_extension(state) or {}
+                except Exception as exc:
+                    provider_decision = {
+                        "decision": "deny",
+                        "reason_codes": ["memory_manager_error", str(exc)[:80]],
+                        "source": "memory_manager",
+                    }
+            decision = normalize_extension_decision(provider_decision)
+            if not decision:
+                decision = normalize_extension_decision(heuristic_iteration_extension_decision(state))
+
+        if decision.get("decision") != "grant":
+            logger.info("Iteration budget extension denied: %s", json.dumps(decision, sort_keys=True))
+            return False
+
+        try:
+            extend_by = int(decision.get("extend_by") or decision.get("extension") or getattr(agent, "max_turns_extension", 30) or 30)
+        except Exception:
+            extend_by = int(getattr(agent, "max_turns_extension", 30) or 30)
+        extend_by = max(1, extend_by)
+        old_max = budget.max_total
+        new_max = budget.extend(extend_by, hard_cap=hard_cap or None)
+        if new_max <= old_max:
+            return False
+        agent.max_iterations = max(agent.max_iterations, new_max)
+        reason = ", ".join(str(r) for r in decision.get("reason_codes", [])[:3]) or "cognition_granted"
+        agent._emit_status(
+            f"↻ DML/DCN granted {new_max - old_max} more tool iterations "
+            f"({old_max}→{new_max}; {reason})."
+        )
+        return True
+
     # ── Preflight context compression ──
     # Before entering the main loop, check if the loaded conversation
     # history already exceeds the model's context threshold.  This handles
@@ -793,7 +858,7 @@ def run_conversation(
             should_review_memory=_should_review_memory,
         )
 
-    while (api_call_count < agent.max_iterations and agent.iteration_budget.remaining > 0) or agent._budget_grace_call:
+    while agent._budget_grace_call or agent.iteration_budget.remaining > 0 or _maybe_extend_iteration_budget():
         # Reset per-turn checkpoint dedup so each iteration can take one snapshot
         agent._checkpoint_mgr.new_turn()
 

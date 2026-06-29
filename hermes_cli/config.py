@@ -768,6 +768,14 @@ DEFAULT_CONFIG = {
         # provider hiccups on a single provider.
         "api_max_retries": 3,
         "service_tier": "",
+        # Cognitive turn-extension policy.  When enabled, Hermes does not
+        # blindly bump the loop counter at exhaustion: it asks the active memory
+        # provider (for example Daystrom DML/DCN) whether the compact run state
+        # is incomplete enough to deserve another bounded slice.
+        "max_turns_auto_extend": False,
+        "max_turns_extension_policy": "cognition",  # cognition | progress
+        "max_turns_extension": 30,
+        "max_turns_hard_cap": 300,
         # Tool-use enforcement: injects system prompt guidance that tells the
         # model to actually call tools instead of describing intended actions.
         # Values: "auto" (default — applies to gpt/codex models), true/false

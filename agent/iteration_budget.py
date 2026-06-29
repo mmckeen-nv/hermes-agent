@@ -48,6 +48,21 @@ class IterationBudget:
             if self._used > 0:
                 self._used -= 1
 
+    def extend(self, amount: int, *, hard_cap: int | None = None) -> int:
+        """Increase the budget by ``amount`` without exceeding ``hard_cap``.
+
+        Returns the new max_total.  A non-positive amount is a no-op.
+        """
+        with self._lock:
+            if amount <= 0:
+                return self.max_total
+            target = self.max_total + int(amount)
+            if hard_cap is not None and hard_cap > 0:
+                target = min(target, int(hard_cap))
+            if target > self.max_total:
+                self.max_total = target
+            return self.max_total
+
     @property
     def used(self) -> int:
         with self._lock:

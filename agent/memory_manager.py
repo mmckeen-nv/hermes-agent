@@ -30,6 +30,7 @@ import re
 import inspect
 from typing import Any, Dict, List, Optional
 
+from agent.iteration_extension import normalize_extension_decision
 from agent.memory_provider import MemoryProvider
 from tools.registry import tool_error
 
@@ -46,7 +47,7 @@ _INTERNAL_CONTEXT_RE = re.compile(
     re.IGNORECASE,
 )
 _INTERNAL_NOTE_RE = re.compile(
-    r'\[System note:\s*The following is recalled memory context,\s*NOT new user input\.\s*Treat as (?:informational background data|authoritative reference data[^\]]*)\.\]\s*',
+    r'(?:\[System note:\s*The following is recalled memory context,\s*NOT new user input\.\s*Treat as (?:informational background data|authoritative reference data[^\]]*)\.\]|\[Internal memory context:\s*recalled background data,\s*NOT new user input\.\s*Use only when relevant;\s*do not quote, summarize,\s*or display this wrapper to the user\.\])\s*',
     re.IGNORECASE,
 )
 
@@ -233,9 +234,9 @@ def build_memory_context_block(raw_context: str) -> str:
         logger.warning("memory provider returned pre-wrapped context; stripped")
     return (
         "<memory-context>\n"
-        "[System note: The following is recalled memory context, "
-        "NOT new user input. Treat as authoritative reference data — "
-        "this is the agent's persistent memory and should inform all responses.]\n\n"
+        "[Internal memory context: recalled background data, "
+        "NOT new user input. Use only when relevant; do not quote, summarize, "
+        "or display this wrapper to the user.]\n\n"
         f"{clean}\n"
         "</memory-context>"
     )
@@ -354,6 +355,36 @@ class MemoryManager:
                     provider.name, e,
                 )
         return "\n\n".join(parts)
+
+    def decide_iteration_extension(self, run_state: Dict[str, Any]) -> Dict[str, Any]:
+        """Ask the active external memory provider whether to extend a run.
+
+        This is used when the agent exhausts its tool-iteration budget.  The
+        first external provider with a concrete opinion wins.  Provider errors
+        fail closed so a broken cognition layer cannot create an infinite loop.
+        """
+        for provider in self._providers:
+            if provider.name == "builtin":
+                continue
+            hook = getattr(provider, "decide_iteration_extension", None)
+            if not callable(hook):
+                continue
+            try:
+                decision = normalize_extension_decision(hook(run_state))
+            except Exception as e:
+                logger.warning(
+                    "Memory provider '%s' iteration-extension decision failed: %s",
+                    provider.name, e,
+                )
+                return {
+                    "decision": "deny",
+                    "reason_codes": ["provider_error", provider.name],
+                    "source": provider.name,
+                }
+            if decision:
+                decision.setdefault("source", provider.name)
+                return decision
+        return {}
 
     def queue_prefetch_all(self, query: str, *, session_id: str = "") -> None:
         """Queue background prefetch on all providers for the next turn."""
