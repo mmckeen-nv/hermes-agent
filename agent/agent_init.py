@@ -253,6 +253,22 @@ def init_agent(
 
     agent.model = model
     agent.max_iterations = max_iterations
+    try:
+        from hermes_cli.config import load_config as _load_turn_cfg
+        _turn_cfg = (_load_turn_cfg().get("agent", {}) or {})
+    except Exception:
+        _turn_cfg = {}
+    agent.max_turns_auto_extend = str(
+        _turn_cfg.get("max_turns_auto_extend", False)
+    ).lower() in {"true", "1", "yes", "on"}
+    try:
+        agent.max_turns_extension = max(1, int(_turn_cfg.get("max_turns_extension", max(10, max_iterations // 2))))
+    except Exception:
+        agent.max_turns_extension = max(10, max_iterations // 2)
+    try:
+        agent.max_turns_hard_cap = max(max_iterations, int(_turn_cfg.get("max_turns_hard_cap", max_iterations)))
+    except Exception:
+        agent.max_turns_hard_cap = max_iterations
     # Shared iteration budget — parent creates, children inherit.
     # Consumed by every LLM turn across parent + all subagents.
     agent.iteration_budget = iteration_budget or IterationBudget(max_iterations)

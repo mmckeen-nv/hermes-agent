@@ -584,6 +584,28 @@ def run_conversation(
 
     active_system_prompt = agent._cached_system_prompt
 
+    def _maybe_extend_iteration_budget() -> bool:
+        budget = getattr(agent, "iteration_budget", None)
+        if not budget or budget.remaining > 0:
+            return False
+        if not getattr(agent, "max_turns_auto_extend", False):
+            return False
+        hard_cap = int(getattr(agent, "max_turns_hard_cap", 0) or 0)
+        if hard_cap and budget.max_total >= hard_cap:
+            return False
+        old_max = budget.max_total
+        new_max = budget.extend(
+            int(getattr(agent, "max_turns_extension", 10) or 10),
+            hard_cap=hard_cap or None,
+        )
+        if new_max <= old_max:
+            return False
+        agent.max_iterations = max(agent.max_iterations, new_max)
+        agent._emit_status(
+            f"↻ Extended tool-iteration budget from {old_max} to {new_max}; still making progress."
+        )
+        return True
+
     # ── Preflight context compression ──
     # Before entering the main loop, check if the loaded conversation
     # history already exceeds the model's context threshold.  This handles
@@ -793,7 +815,7 @@ def run_conversation(
             should_review_memory=_should_review_memory,
         )
 
-    while (api_call_count < agent.max_iterations and agent.iteration_budget.remaining > 0) or agent._budget_grace_call:
+    while agent._budget_grace_call or agent.iteration_budget.remaining > 0 or _maybe_extend_iteration_budget():
         # Reset per-turn checkpoint dedup so each iteration can take one snapshot
         agent._checkpoint_mgr.new_turn()
 
