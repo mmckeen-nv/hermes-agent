@@ -7971,6 +7971,9 @@ class GatewayRunner:
         if canonical == "profile":
             return await self._handle_profile_command(event)
 
+        if canonical == "dml-help":
+            return await self._handle_dml_help_command(event)
+
         if canonical == "whoami":
             return await self._handle_whoami_command(event)
 
@@ -9995,6 +9998,20 @@ class GatewayRunner:
         ]
 
         return "\n".join(lines)
+
+    async def _handle_dml_help_command(self, event: MessageEvent) -> str:
+        """Handle /dml-help — show Daystrom DML config and runtime status."""
+        from agent.dml_status import build_dml_status_report
+
+        source = event.source
+        session_key = self._session_key_for_source(source) if source else None
+        running_agent = self._running_agents.get(session_key) if session_key else None
+        return build_dml_status_report(
+            config=self.config if isinstance(self.config, dict) else getattr(self.config, "__dict__", {}),
+            hermes_home=_hermes_home,
+            agent=running_agent,
+            running_agents=self._running_agents.values(),
+        )
 
 
     def _check_slash_access(

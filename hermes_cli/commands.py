@@ -112,6 +112,7 @@ COMMAND_REGISTRY: list[CommandDef] = [
     CommandDef("status", "Show session info", "Session"),
     CommandDef("whoami", "Show your slash command access (admin / user)", "Info"),
     CommandDef("profile", "Show active profile name and home directory", "Info"),
+    CommandDef("dml-help", "Show Daystrom DML config, preflight, and runtime hook status", "Info"),
     CommandDef("sethome", "Set this chat as the home channel", "Session",
                gateway_only=True, aliases=("set-home",)),
     CommandDef("resume", "Resume a previously-named session", "Session",
@@ -1070,6 +1071,16 @@ def slack_native_slashes() -> list[tuple[str, str, str]]:
         # Slack description cap is 2000 chars; keep it short.
         entries.append((slack_name, desc[:140], hint[:100]))
         seen.add(slack_name)
+
+    # Preserve short, heavily documented aliases even as the canonical command
+    # list grows toward Slack's hard 50-command app limit.  Without this
+    # priority pass, adding one new gateway command can silently push aliases
+    # like /q out of Slack native registration.
+    priority_aliases = ("btw", "bg", "reset", "q")
+    for alias in priority_aliases:
+        cmd = resolve_command(alias)
+        if cmd is not None and _is_gateway_available(cmd, overrides):
+            _add(alias, f"Alias for /{cmd.name} — {cmd.description}", cmd.args_hint or "")
 
     # First pass: canonical names (so they win slots if we hit the cap).
     for cmd in COMMAND_REGISTRY:
