@@ -567,8 +567,9 @@ class ContextCompressor(ContextEngine):
         self._external_handoff_summary = text or None
 
     def _effective_tail_token_budget(self) -> int:
-        if self.dml_first_enabled and self._external_handoff_summary:
-            return max(1024, int(self.threshold_tokens * self.dml_first_tail_ratio))
+        if getattr(self, "dml_first_enabled", False) and self._external_handoff_summary:
+            ratio = float(getattr(self, "dml_first_tail_ratio", 0.06) or 0.06)
+            return max(1024, int(self.threshold_tokens * ratio))
         return self.tail_token_budget
 
     def update_model(
@@ -1933,7 +1934,7 @@ The user has requested that this compaction PRIORITISE preserving all informatio
                 self._previous_summary = summary_body
             turns_to_summarize = messages[max(compress_start, summary_idx + 1):compress_end]
 
-        if self.dml_first_enabled and self._external_handoff_summary:
+        if getattr(self, "dml_first_enabled", False) and self._external_handoff_summary:
             # A durable DML handoff makes the old transcript safe to shed; keep
             # only the newest conversational tail rather than a giant token
             # budget tail that can immediately recreate context pressure.
@@ -1968,7 +1969,7 @@ The user has requested that this compaction PRIORITISE preserving all informatio
         # wrote a compact DML handoff, prefer that over re-summarizing the full
         # transcript; DML becomes the continuity spine and compression only
         # sheds prompt bulk.
-        if self.dml_first_enabled and self._external_handoff_summary:
+        if getattr(self, "dml_first_enabled", False) and self._external_handoff_summary:
             summary = self._with_summary_prefix(self._external_handoff_summary)
             self._previous_summary = self._strip_summary_prefix(summary)
             self._summary_failure_cooldown_until = 0.0
