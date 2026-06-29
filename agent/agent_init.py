@@ -200,6 +200,8 @@ def init_agent(
     checkpoint_max_total_size_mb: int = 500,
     checkpoint_max_file_size_mb: int = 10,
     pass_session_id: bool = False,
+    tool_progress_mode: Optional[str] = None,
+    **extra_kwargs,
 ):
     """
     Initialize the AI Agent.
@@ -1162,6 +1164,43 @@ def init_agent(
                         pass
                     agent._memory_manager.initialize_all(**_init_kwargs)
                     _ra().logger.info("Memory provider '%s' activated", _mem_provider_name)
+                    if str(_mem_provider_name).strip() == "daystrom_dml":
+                        try:
+                            from agent.dml_preflight import run_daystrom_dml_preflight
+
+                            _dml_issues, _dml_ok = run_daystrom_dml_preflight(
+                                config=_agent_cfg,
+                                hermes_home=get_hermes_home(),
+                                agent=agent,
+                                memory_manager=agent._memory_manager,
+                            )
+                            if _dml_issues:
+                                _ra().logger.warning(
+                                    "Daystrom DML startup preflight found %d issue(s): %s",
+                                    len(_dml_issues),
+                                    "; ".join(_dml_issues[:8]),
+                                )
+                                try:
+                                    agent._emit_status(
+                                        f"⚠ Daystrom DML preflight found {len(_dml_issues)} issue(s); see logs."
+                                    )
+                                except Exception:
+                                    pass
+                                if str(
+                                    ((_agent_cfg.get("memory", {}) or {}).get("daystrom_dml") or {}).get("preflight_strict", False)
+                                ).lower() in {"true", "1", "yes"}:
+                                    raise RuntimeError("Daystrom DML startup preflight failed: " + "; ".join(_dml_issues[:8]))
+                            else:
+                                _ra().logger.info(
+                                    "Daystrom DML startup preflight passed (%d checks)",
+                                    len(_dml_ok),
+                                )
+                        except Exception as _dml_preflight_exc:
+                            _ra().logger.warning("Daystrom DML startup preflight failed: %s", _dml_preflight_exc)
+                            if str(
+                                ((_agent_cfg.get("memory", {}) or {}).get("daystrom_dml") or {}).get("preflight_strict", False)
+                            ).lower() in {"true", "1", "yes"}:
+                                raise
                 else:
                     _ra().logger.debug("Memory provider '%s' not found or not available", _mem_provider_name)
                     agent._memory_manager = None
