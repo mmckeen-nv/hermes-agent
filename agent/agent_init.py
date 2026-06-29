@@ -1249,6 +1249,10 @@ def init_agent(
     compression_abort_on_summary_failure = str(
         _compression_cfg.get("abort_on_summary_failure", False)
     ).lower() in {"true", "1", "yes"}
+    compression_dml_first_enabled = str(
+        _compression_cfg.get("dml_first", _compression_cfg.get("dml_first_enabled", False))
+    ).lower() in {"true", "1", "yes"}
+    compression_dml_first_tail_ratio = float(_compression_cfg.get("dml_first_tail_ratio", 0.06))
 
     # Read optional explicit context_length override for the auxiliary
     # compression model. Custom endpoints often cannot report this via
@@ -1466,6 +1470,8 @@ def init_agent(
             provider=agent.provider,
             api_mode=agent.api_mode,
             abort_on_summary_failure=compression_abort_on_summary_failure,
+            dml_first_enabled=compression_dml_first_enabled,
+            dml_first_tail_ratio=compression_dml_first_tail_ratio,
         )
     agent.compression_enabled = compression_enabled
 

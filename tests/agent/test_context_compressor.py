@@ -166,6 +166,37 @@ class TestCompress:
         assert c._last_summary_fallback_used is True
         assert c._last_summary_dropped_count == 3
 
+    def test_dml_first_external_handoff_skips_llm_summary(self):
+        with patch("agent.context_compressor.get_model_context_length", return_value=100000):
+            c = ContextCompressor(
+                model="test/model",
+                protect_first_n=0,
+                protect_last_n=2,
+                quiet_mode=True,
+                dml_first_enabled=True,
+            )
+        c.set_external_handoff_summary(
+            "## Daystrom DML Continuity Checkpoint\n"
+            "## Active Task\nkeep fluid conversation\n\n"
+            "## Active State\nDML has durable continuity."
+        )
+        msgs = [{"role": "system", "content": "System prompt"}] + self._make_messages(10)
+        with (
+            patch.object(c, "_find_tail_cut_by_tokens", return_value=4),
+            patch("agent.context_compressor.call_llm") as call_llm,
+        ):
+            result = c.compress(msgs)
+
+        call_llm.assert_not_called()
+        combined = "\n".join(str(m.get("content", "")) for m in result)
+        assert "Daystrom DML Continuity Checkpoint" in combined
+        assert "keep fluid conversation" in combined
+        assert "msg 0" not in combined
+        assert "msg 8" in combined
+        assert "msg 9" in combined
+        assert c._last_summary_fallback_used is False
+        assert c.compression_count == 1
+
     def test_compression_increments_count(self, compressor):
         msgs = self._make_messages(10)
         # Default config (abort_on_summary_failure=False) — fallback path

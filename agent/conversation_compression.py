@@ -422,10 +422,15 @@ def compress_context(
             except Exception as _rel_err:
                 logger.debug("compression lock release failed: %s", _rel_err)
 
-    # Notify external memory provider before compression discards context
+    # Notify external memory provider before compression discards context.  If a
+    # provider returns a compact durable handoff (Daystrom DML does), pass it to
+    # the compressor so compression can shed transcript bulk without treating an
+    # LLM summary as the source of truth.
     if agent._memory_manager:
         try:
-            agent._memory_manager.on_pre_compress(messages)
+            pre_compress_handoff = agent._memory_manager.on_pre_compress(messages)
+            if pre_compress_handoff and hasattr(agent.context_compressor, "set_external_handoff_summary"):
+                agent.context_compressor.set_external_handoff_summary(pre_compress_handoff)
         except Exception:
             pass
 

@@ -552,6 +552,24 @@ class ContextCompressor(ContextEngine):
         self.last_compression_rough_tokens = 0
         self.last_rough_tokens_when_real_prompt_fit = 0
         self.awaiting_real_usage_after_compression = False
+        self._external_handoff_summary = None
+
+    def set_external_handoff_summary(self, summary: str) -> None:
+        """Provide a durable-memory checkpoint for the next compression.
+
+        Memory providers such as Daystrom DML can write continuity out of band
+        before compaction.  When enabled, the compressor uses that compact
+        checkpoint directly instead of asking another LLM to summarize the same
+        transcript again.  This keeps DML as the continuity spine and leaves
+        ordinary compression as an airbag.
+        """
+        text = redact_sensitive_text(str(summary or "").strip())
+        self._external_handoff_summary = text or None
+
+    def _effective_tail_token_budget(self) -> int:
+        if self.dml_first_enabled and self._external_handoff_summary:
+            return max(1024, int(self.threshold_tokens * self.dml_first_tail_ratio))
+        return self.tail_token_budget
 
     def update_model(
         self,
@@ -596,6 +614,8 @@ class ContextCompressor(ContextEngine):
         provider: str = "",
         api_mode: str = "",
         abort_on_summary_failure: bool = False,
+        dml_first_enabled: bool = False,
+        dml_first_tail_ratio: float = 0.06,
     ):
         self.model = model
         self.base_url = base_url
@@ -612,6 +632,9 @@ class ContextCompressor(ContextEngine):
         # When False (default = historical behavior), insert a
         # deterministic "summary unavailable" handoff and drop the middle window.
         self.abort_on_summary_failure = abort_on_summary_failure
+        self.dml_first_enabled = bool(dml_first_enabled)
+        self.dml_first_tail_ratio = max(0.02, min(float(dml_first_tail_ratio or 0.06), self.summary_target_ratio))
+        self._external_handoff_summary: Optional[str] = None
 
         self.context_length = get_model_context_length(
             model, base_url=base_url, api_key=api_key,
@@ -1876,7 +1899,7 @@ The user has requested that this compaction PRIORITISE preserving all informatio
         # Phase 1: Prune old tool results (cheap, no LLM call)
         messages, pruned_count = self._prune_old_tool_results(
             messages, protect_tail_count=self.protect_last_n,
-            protect_tail_tokens=self.tail_token_budget,
+            protect_tail_tokens=self._effective_tail_token_budget(),
         )
         if pruned_count and not self.quiet_mode:
             logger.info("Pre-compression: pruned %d old tool result(s)", pruned_count)
@@ -1910,6 +1933,15 @@ The user has requested that this compaction PRIORITISE preserving all informatio
                 self._previous_summary = summary_body
             turns_to_summarize = messages[max(compress_start, summary_idx + 1):compress_end]
 
+        if self.dml_first_enabled and self._external_handoff_summary:
+            # A durable DML handoff makes the old transcript safe to shed; keep
+            # only the newest conversational tail rather than a giant token
+            # budget tail that can immediately recreate context pressure.
+            compact_tail_end = max(compress_start, n_messages - max(1, self.protect_last_n))
+            if compact_tail_end > compress_end:
+                compress_end = compact_tail_end
+                turns_to_summarize = messages[compress_start:compress_end]
+
         if not self.quiet_mode:
             logger.info(
                 "Context compression triggered (%d tokens >= %d threshold)",
@@ -1932,8 +1964,19 @@ The user has requested that this compaction PRIORITISE preserving all informatio
                 tail_msgs,
             )
 
-        # Phase 3: Generate structured summary
-        summary = self._generate_summary(turns_to_summarize, focus_topic=focus_topic)
+        # Phase 3: Generate structured summary.  When a memory provider already
+        # wrote a compact DML handoff, prefer that over re-summarizing the full
+        # transcript; DML becomes the continuity spine and compression only
+        # sheds prompt bulk.
+        if self.dml_first_enabled and self._external_handoff_summary:
+            summary = self._with_summary_prefix(self._external_handoff_summary)
+            self._previous_summary = self._strip_summary_prefix(summary)
+            self._summary_failure_cooldown_until = 0.0
+            self._last_summary_error = None
+            self._last_summary_fallback_used = False
+            self._external_handoff_summary = None
+        else:
+            summary = self._generate_summary(turns_to_summarize, focus_topic=focus_topic)
 
         # If summary generation failed, behavior splits on
         # ``abort_on_summary_failure`` (config: compression.abort_on_summary_failure):

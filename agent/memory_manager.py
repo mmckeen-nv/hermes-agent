@@ -46,7 +46,7 @@ _INTERNAL_CONTEXT_RE = re.compile(
     re.IGNORECASE,
 )
 _INTERNAL_NOTE_RE = re.compile(
-    r'\[System note:\s*The following is recalled memory context,\s*NOT new user input\.\s*Treat as (?:informational background data|authoritative reference data[^\]]*)\.\]\s*',
+    r'(?:\[System note:\s*The following is recalled memory context,\s*NOT new user input\.\s*Treat as (?:informational background data|authoritative reference data[^\]]*)\.\]|\[Internal memory context:\s*recalled background data,\s*NOT new user input\.\s*Use only when relevant;\s*do not quote, summarize,\s*or display this wrapper to the user\.\])\s*',
     re.IGNORECASE,
 )
 
@@ -233,9 +233,9 @@ def build_memory_context_block(raw_context: str) -> str:
         logger.warning("memory provider returned pre-wrapped context; stripped")
     return (
         "<memory-context>\n"
-        "[System note: The following is recalled memory context, "
-        "NOT new user input. Treat as authoritative reference data — "
-        "this is the agent's persistent memory and should inform all responses.]\n\n"
+        "[Internal memory context: recalled background data, "
+        "NOT new user input. Use only when relevant; do not quote, summarize, "
+        "or display this wrapper to the user.]\n\n"
         f"{clean}\n"
         "</memory-context>"
     )
