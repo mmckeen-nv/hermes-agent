@@ -259,6 +259,10 @@ _PROVIDER_MODELS: dict[str, list[str]] = {
         "nvidia/nemotron-3-nano-30b-a3b",
         "nvidia/llama-3.3-nemotron-super-49b-v1.5",
         # Third-party agentic models hosted on build.nvidia.com
+        # Keep provider-native NVIDIA IDs here so selecting GLM under NVIDIA
+        # does not fall through to OpenRouter/Z.AI credential checks.
+        "nvidia/zai-org/glm-5.2",
+        "zai-org/GLM-5.2",
         # (map to OpenRouter defaults — users get familiar picks on NIM)
         "qwen/qwen3.5-397b-a17b",
         "deepseek-ai/deepseek-v3.2",

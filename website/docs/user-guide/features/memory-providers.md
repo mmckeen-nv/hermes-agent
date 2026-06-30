@@ -6,7 +6,7 @@ description: "External memory provider plugins — Honcho, OpenViking, Mem0, Hin
 
 # Memory Providers
 
-Hermes Agent ships with 8 external memory provider plugins that give the agent persistent, cross-session knowledge beyond the built-in MEMORY.md and USER.md. Only **one** external provider can be active at a time — the built-in memory is always active alongside it.
+Hermes Agent ships with external memory provider plugins that give the agent persistent, cross-session knowledge beyond the built-in MEMORY.md and USER.md. **Daystrom DML is the default core memory provider** when available: Hermes uses it for durable semantic continuity, success/failure learning, and startup self-diagnostics unless the user explicitly disables external memory. Only **one** external provider can be active at a time — the built-in memory is always active alongside it.
 
 ## Quick Start
 
@@ -22,7 +22,27 @@ Or set manually in `~/.hermes/config.yaml`:
 
 ```yaml
 memory:
-  provider: openviking   # or honcho, mem0, hindsight, holographic, retaindb, byterover, supermemory
+  provider: daystrom_dml # default core memory; set '' to disable external memory
+```
+
+To switch to a different provider, replace `daystrom_dml` with `openviking`, `honcho`, `mem0`, `hindsight`, `holographic`, `retaindb`, `byterover`, or `supermemory`.
+
+### Daystrom DML default behavior
+
+Daystrom DML is treated as core agent functionality, not an optional harness preference. Agents should assume it is enabled by default and use it to persist compact semantic successes, failures, configuration pitfalls, and verified fixes for later tool calls/tasks. DML must never store API keys, bearer tokens, raw tool logs, full transcripts, or other secret material.
+
+Useful checks:
+
+```bash
+hermes memory status
+hermes doctor
+```
+
+In gateway sessions, `/dml-help` shows a secret-safe DML preflight/status report. If an operator wants built-in file memory only, disable the external provider explicitly:
+
+```yaml
+memory:
+  provider: ''
 ```
 
 ## How It Works

@@ -1,0 +1,28 @@
+name: daystrom_dml
+description: Daystrom DML memory and personality provider for Citizen Snips/Hermes.
+version: 0.3.0
+config:
+  dcn:
+    mode:
+      type: enum
+      default: disabled
+      values:
+        - disabled
+        - observe_only
+        - active_read
+        - active_learn
+      description: >-
+        Daystrom Cognition Network mode. disabled preserves the existing DML/DPM
+        provider behavior with no DCN telemetry. observe_only records what DCN
+        would recommend while leaving existing prompt injection and retrieval
+        behavior authoritative. active_read lets deterministic DCN policy gate
+        bounded DPM overlay and DML retrieval with fallback to existing behavior
+        on DCN failure. active_learn requires governed promotion evidence from
+        `dml dcn promote` and otherwise falls back closed to active_read.
+    promotion:
+      type: object
+      default: {}
+      description: >-
+        Sanitized metadata from a successful governed `dml dcn promote` response.
+        Required for active_learn to become the effective runtime mode; otherwise
+        the provider falls back to active_read.

@@ -82,7 +82,9 @@ Set `HERMES_DISABLE_WINDOWS_UTF8=1` in your environment if you hit an encoding-r
 
 ### What the Installer Does
 
-The installer handles everything automatically — all dependencies (Python, Node.js, ripgrep, ffmpeg), the repo clone, virtual environment, global `hermes` command setup, and LLM provider configuration. By the end, you're ready to chat.
+The installer handles everything automatically — all dependencies (Python, Node.js, ripgrep, ffmpeg), the repo clone, virtual environment, global `hermes` command setup, LLM provider configuration, and the default Daystrom DML memory wiring when the DML handoff is present. By the end, you're ready to chat.
+
+Agent operators should treat DML as the default continuity substrate: leave `memory.provider: daystrom_dml` in place unless the user explicitly disables external memory, run `hermes memory status` / `/dml-help` during preflight, and store only compact semantic successes/failures — never secrets, raw transcripts, or raw tool logs.
 
 #### Install Layout
 

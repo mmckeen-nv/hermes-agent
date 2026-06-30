@@ -1531,11 +1531,28 @@ DEFAULT_CONFIG = {
         "user_profile_enabled": True,
         "memory_char_limit": 2200,   # ~800 tokens at 2.75 chars/token
         "user_char_limit": 1375,     # ~500 tokens at 2.75 chars/token
-        # External memory provider plugin (empty = built-in only).
-        # Set to a provider name to activate: "openviking", "mem0",
-        # "hindsight", "holographic", "retaindb", "byterover".
+        # External memory provider plugin. Daystrom DML is the default core
+        # continuity layer; set this explicitly to an empty string to disable
+        # external memory and use only the built-in MEMORY.md/USER.md files.
         # Only ONE external provider is allowed at a time.
-        "provider": "",
+        "provider": "daystrom_dml",
+        "daystrom_dml": {
+            "integration_dir": "hermes-agent/integrations/daystrom-dml",
+            "launcher": "hermes-agent/integrations/daystrom-dml/bin/hermes-dml-memory",
+            "venv_python": "hermes-agent/integrations/daystrom-dml/.venv-dml/bin/python",
+            "source_dir": "hermes-agent/integrations/daystrom-dml/source",
+            "storage_dir": "hermes-agent/integrations/daystrom-dml/stores/hermes-runtime-store",
+            "config_path": "hermes-agent/integrations/daystrom-dml/source/openclaw-wrapper/config/dml_gpu_only.yaml",
+            "enable_memory": True,
+            "enable_personality": True,
+            "sync_turns": True,
+            "retrieval_policy": "always",
+            "top_k": 6,
+            "timeout_seconds": 8,
+            "max_context_chars": 2500,
+            "dcn": {"mode": "active_read", "promotion": {}},
+            "preflight_strict": False,
+        },
     },
 
     # Subagent delegation — override the provider:model used by delegate_task
